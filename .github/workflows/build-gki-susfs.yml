@@ -4,26 +4,26 @@ on:
   workflow_dispatch:
     inputs:
       ksu_tag:
-        description: 'KernelSU tag (e.g. v1.0.3 or main)'
+        description: "KernelSU tag (e.g. v1.0.3 or main)"
         required: false
-        default: 'main'
+        default: "main"
       susfs_tag:
-        description: 'SUSFS tag on gki-android12-5.10 branch'
+        description: "SUSFS tag on gki-android12-5.10 branch"
         required: false
-        default: 'v2.0.0'
+        default: "v2.0.0"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space-action@master
-        with:
-          remove-android: true
-          remove-dotnet: true
-          remove-haskell: true
-          remove-codeql: true
-          remove-docker-images: true
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install build dependencies
         run: |
@@ -56,33 +56,25 @@ jobs:
           cd susfs4ksu
           git checkout "${SUSFS_TAG}" 2>/dev/null || echo "Using branch HEAD"
           cd ..
-
-          # Copy SUSFS source files
           cp susfs4ksu/kernel_patches/fs/susfs.c common/fs/
           cp susfs4ksu/kernel_patches/include/linux/susfs.h common/include/linux/
-
-          # Apply SUSFS patch to KernelSU
           cd KernelSU
           patch -p1 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || {
             echo "KernelSU patch failed, trying with fuzz..."
             patch -p1 --fuzz=3 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
           }
           cd ..
-
-          # Apply SUSFS patch to kernel
           cd common
           patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch || {
             echo "Kernel patch failed, trying with fuzz..."
             patch -p1 --fuzz=3 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch
           }
           cd ..
-
           echo "SUSFS patches applied"
 
       - name: Enable KernelSU and SUSFS in defconfig
         run: |
           cd kernel-src
-          # Add KSU and SUSFS config to defconfig
           cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
 
           # KernelSU
@@ -127,7 +119,6 @@ jobs:
           cd kernel-src
           BOOT_IMG=$(find out/ -name "boot.img" -type f 2>/dev/null | head -1)
           if [ -z "$BOOT_IMG" ]; then
-            # Try other possible locations
             BOOT_IMG=$(find . -path "*/dist/boot.img" -type f 2>/dev/null | head -1)
           fi
           if [ -z "$BOOT_IMG" ]; then
@@ -146,16 +137,3 @@ jobs:
           name: kernelsu-susfs-gki-boot-android12-5.10
           path: kernel-src/upload/
           retention-days: 30
-
-      - name: Build info
-        run: |
-          echo "========================================="
-          echo "  Build Complete!"
-          echo "========================================="
-          echo "  KernelSU: ${{ github.event.inputs.ksu_tag }}"
-          echo "  SUSFS: ${{ github.event.inputs.susfs_tag }}"
-          echo "  KMI: android12-5.10"
-          echo "========================================="
-          echo ""
-          echo "Download the boot.img artifact from this run."
-          echo "Then use magiskboot to replace kernel into your stock boot."
