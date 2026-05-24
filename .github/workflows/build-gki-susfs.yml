@@ -61,6 +61,7 @@ jobs:
           # Copy SUSFS source files
           cp susfs4ksu/kernel_patches/fs/susfs.c common/fs/
           cp susfs4ksu/kernel_patches/include/linux/susfs.h common/include/linux/
+          cp susfs4ksu/kernel_patches/include/linux/susfs_def.h common/include/linux/
 
           # Apply SUSFS patch to KernelSU
           cd KernelSU
