@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       ksu_tag:
-        description: "KernelSU tag (e.g. v1.0.3 or main)"
+        description: "KernelSU tag"
         required: false
         default: "main"
       susfs_tag:
-        description: "SUSFS tag on gki-android12-5.10 branch"
+        description: "SUSFS tag"
         required: false
         default: "v2.0.0"
 
@@ -28,16 +28,12 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            git repo curl wget python3 python3-pip \
-            build-essential clang lld llvm \
-            bc bison flex libssl-dev libelf-dev \
-            zstd cpio file rsync
+          sudo apt-get install -y git repo curl wget python3 build-essential clang lld llvm bc bison flex libssl-dev libelf-dev zstd cpio file rsync
 
       - name: Clone kernel source (android12-5.10)
         run: |
           mkdir kernel-src && cd kernel-src
-          repo init -u https://android.googlesource.com/kernel/manifest -b android12-5.10
+          repo init -u https://android.googlesource.com/kernel/manifest -b common-android12-5.10
           repo sync -j$(nproc)
           echo "Kernel source synced"
 
@@ -59,16 +55,10 @@ jobs:
           cp susfs4ksu/kernel_patches/fs/susfs.c common/fs/
           cp susfs4ksu/kernel_patches/include/linux/susfs.h common/include/linux/
           cd KernelSU
-          patch -p1 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || {
-            echo "KernelSU patch failed, trying with fuzz..."
-            patch -p1 --fuzz=3 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
-          }
+          patch -p1 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || patch -p1 --fuzz=3 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
           cd ..
           cd common
-          patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch || {
-            echo "Kernel patch failed, trying with fuzz..."
-            patch -p1 --fuzz=3 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch
-          }
+          patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch || patch -p1 --fuzz=3 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch
           cd ..
           echo "SUSFS patches applied"
 
@@ -77,7 +67,7 @@ jobs:
           cd kernel-src
           cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
 
-          # KernelSU
+          # KernelSU + SUSFS
           CONFIG_KSU=y
           CONFIG_KSU_SUSFS=y
           CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
@@ -94,15 +84,6 @@ jobs:
           CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
           CONFIG_KSU_SUSFS_SPOOF_PROC_FD_LINK=y
           CONFIG_KSU_SUSFS_SUS_MAPS=y
-          CONFIG_KSU_SUSFS_SUS_SOCK_STAT=y
-          CONFIG_KSU_SUSFS_SUS_LOAD_AVG=y
-          CONFIG_KSU_SUSFS_SUS_IO=y
-          CONFIG_KSU_SUSFS_SUS_CGROUPS=y
-          CONFIG_KSU_SUSFS_SUS_MEMINFO=y
-          CONFIG_KSU_SUSFS_SUS_VMSTAT=y
-          CONFIG_KSU_SUSFS_SUS_NET_DEV=y
-          CONFIG_KSU_SUSFS_SUS_DISK_STATS=y
-          CONFIG_KSU_SUSFS_SUS_MOUNT_INFO=y
           EOF
           echo "Defconfig updated"
 
@@ -121,10 +102,7 @@ jobs:
           if [ -z "$BOOT_IMG" ]; then
             BOOT_IMG=$(find . -path "*/dist/boot.img" -type f 2>/dev/null | head -1)
           fi
-          if [ -z "$BOOT_IMG" ]; then
-            BOOT_IMG=$(find out/ -name "*.img" -type f 2>/dev/null | head -1)
-          fi
-          echo "Found boot.img at: $BOOT_IMG"
+          echo "Found: $BOOT_IMG"
           ls -la "$BOOT_IMG" 2>/dev/null || echo "No boot.img found!"
           mkdir -p upload
           if [ -n "$BOOT_IMG" ] && [ -f "$BOOT_IMG" ]; then
