@@ -126,27 +126,31 @@ jobs:
           build/build.sh
           echo "Build completed"
 
-      - name: Find and upload boot.img
+      - name: Package kernel Image.lz4 for download
         run: |
           cd kernel-src
-          BOOT_IMG=$(find out/ -name "boot.img" -type f 2>/dev/null | head -1)
-          if [ -z "$BOOT_IMG" ]; then
-            BOOT_IMG=$(find . -path "*/dist/boot.img" -type f 2>/dev/null | head -1)
-          fi
-          if [ -z "$BOOT_IMG" ]; then
-            BOOT_IMG=$(find out/ -name "*.img" -type f 2>/dev/null | head -1)
-          fi
-          echo "Found boot.img at: $BOOT_IMG"
-          ls -la "$BOOT_IMG" 2>/dev/null || echo "No boot.img found!"
           mkdir -p upload
-          if [ -n "$BOOT_IMG" ] && [ -f "$BOOT_IMG" ]; then
-            cp "$BOOT_IMG" upload/boot.img
+          # GKI build outputs Image.lz4, find it
+          KERNEL_IMAGE=$(find out/ -name "Image.lz4" -type f 2>/dev/null | head -1)
+          if [ -z "$KERNEL_IMAGE" ]; then
+            KERNEL_IMAGE=$(find out/ -name "Image" -type f 2>/dev/null | head -1)
           fi
+          echo "Kernel image: $KERNEL_IMAGE"
+          ls -la "$KERNEL_IMAGE" 2>/dev/null || echo "No kernel image found!"
+          if [ -n "$KERNEL_IMAGE" ] && [ -f "$KERNEL_IMAGE" ]; then
+            cp "$KERNEL_IMAGE" upload/
+            # Also copy other useful files from dist
+            for f in System.map vmlinux.symvers; do
+              FOUND=$(find out/ -name "$f" -type f 2>/dev/null | head -1)
+              if [ -n "$FOUND" ]; then cp "$FOUND" upload/; fi
+            done
+          fi
+          ls -la upload/
 
-      - name: Upload boot.img
+      - name: Upload kernel image
         uses: actions/upload-artifact@v4
         with:
-          name: kernelsu-susfs-gki-boot-android12-5.10
+          name: kernelsu-susfs-gki-kernel-android12-5.10
           path: kernel-src/upload/
           retention-days: 30
 
